@@ -1,0 +1,44 @@
+#ifndef RYLR998_H
+#define RYLR998_H
+
+#include <Arduino.h>
+#include <SoftwareSerial.h>
+#include <ArduinoJson.h>
+
+struct LoRaMessage
+    {
+    uint16_t address;
+    uint8_t length;
+    String data;
+    int rssi;
+    int snr;
+    };
+
+class RYLR998
+    {
+    public:
+        RYLR998(int rx, int tx);
+        void begin(long baudRate = 115200);
+        String getIncoming();
+        bool send(uint16_t address, const String &data);
+        bool setMode(uint8_t mode, uint16_t rxTime = 1000, uint16_t lowSpeedTime = 1000);
+        bool setBand(uint32_t frequency);
+        bool setParameter(uint8_t sf, uint8_t bw, uint8_t cr, uint8_t preamble);
+        bool setAddress(uint16_t address);
+        bool setNetworkID(uint8_t id);
+        bool setCPIN(const String &password);
+        bool setRFPower(uint8_t power);
+        bool setBaudRate(uint32_t baudrate);
+        void setJsonDocument(StaticJsonDocument<250> &document);
+
+    private:
+        SoftwareSerial _serial;
+        String _sendCommand(const String &command, unsigned long timeout = 1000);
+        StaticJsonDocument<250> *_doc;
+    };
+
+extern RYLR998 LoRa;
+
+
+
+#endif

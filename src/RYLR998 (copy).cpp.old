@@ -1,0 +1,155 @@
+#include "RYLR998.h"
+#include <ArduinoJson.h>
+
+RYLR998 LoRa(D5, D6); // Default RX, TX pins
+
+RYLR998::RYLR998(int rx, int tx) : _serial(rx, tx), _doc(nullptr)     {    }
+
+void RYLR998::begin(long baudRate)
+    {
+    _serial.begin(baudRate, SWSERIAL_8N1, D5, D6, 255);
+    }
+
+//Fill the Json document with incoming data, if available.  Return true if new data.
+String RYLR998::getIncoming() 
+    {
+    String newData="";
+
+    if (_serial.available())
+        {
+        String response = _serial.readStringUntil('\n');
+        if (response.startsWith("+RCV="))
+            {
+            LoRaMessage msg;
+
+            int equalSignIndex = response.indexOf('=');
+            String result = response.substring(equalSignIndex + 1);
+
+            // sscanf(response.c_str(), "+RCV=%hu,%hhu,%*[^,],%d,%d", &msg.address, &msg.length, &msg.rssi, &msg.snr);
+            // int dataStart = response.indexOf(',', response.indexOf(',') + 1) + 1;
+            // int dataEnd = response.lastIndexOf(',');
+
+            // msg.data = response.substring(dataStart, dataEnd);
+            StaticJsonDocument<250> incomingJsonData;
+            auto error = deserializeJson(incomingJsonData, result);
+            if (error) 
+                {
+                Serial.print(F("deserializeJson() failed with code "));
+                Serial.println(error.c_str());
+                }
+
+            (*_doc)["distance"]=incomingJsonData["distance"];
+            (*_doc)["ispresent"]=incomingJsonData["ispresent"];
+            (*_doc)["battery"]=incomingJsonData["battery"];
+            (*_doc)["sender"]=msg.address;
+            (*_doc)["rssi"]=msg.rssi;
+            (*_doc)["snr"]=msg.snr;
+            newData=response;
+
+            //serializeJson((*_doc), newData);
+
+            // if (_mqttClient && _mqttClient->connected() && _mqttTopic)
+            //     {
+            //     String mqttMessage = "Address:" + String(msg.address) +
+            //                          ",Length:" + String(msg.length) +
+            //                          ",Data:" + msg.data +
+            //                          ",RSSI:" + String(msg.rssi) +
+            //                          ",SNR:" + String(msg.snr);
+            //     _mqttClient->publish(_mqttTopic, mqttMessage.c_str());
+            //     }
+            }
+        Serial.println(newData);
+        }
+
+    
+    return newData;
+    }
+
+bool RYLR998::send(uint16_t address, const String &data)
+    {
+    String command = "AT+SEND=" + String(address) + "," + String(data.length()) + "," + data;
+    String response = _sendCommand(command);
+    return response == "+OK";
+    }
+
+bool RYLR998::setMode(uint8_t mode, uint16_t rxTime, uint16_t lowSpeedTime)
+    {
+    String command = "AT+MODE=" + String(mode);
+    if (mode == 2)
+        {
+        command += "," + String(rxTime) + "," + String(lowSpeedTime);
+        }
+    String response = _sendCommand(command);
+    return response == "+OK";
+    }
+
+bool RYLR998::setBand(uint32_t frequency)
+    {
+    String command = "AT+BAND=" + String(frequency);
+    String response = _sendCommand(command);
+    return response == "+OK";
+    }
+
+bool RYLR998::setParameter(uint8_t sf, uint8_t bw, uint8_t cr, uint8_t preamble)
+    {
+    String command = "AT+PARAMETER=" + String(sf) + "," + String(bw) + "," + String(cr) + "," + String(preamble);
+    String response = _sendCommand(command);
+    return response == "+OK";
+    }
+
+bool RYLR998::setAddress(uint16_t address)
+    {
+    String command = "AT+ADDRESS=" + String(address);
+    String response = _sendCommand(command);
+    return response == "+OK";
+    }
+
+bool RYLR998::setNetworkID(uint8_t id)
+    {
+    String command = "AT+NETWORKID=" + String(id);
+    String response = _sendCommand(command);
+    return response == "+OK";
+    }
+
+bool RYLR998::setCPIN(const String &password)
+    {
+    String command = "AT+CPIN=" + password;
+    String response = _sendCommand(command);
+    return response == "+OK";
+    }
+
+bool RYLR998::setRFPower(uint8_t power)
+    {
+    String command = "AT+CRFOP=" + String(power);
+    String response = _sendCommand(command);
+    return response == "+OK";
+    }
+
+bool RYLR998::setBaudRate(uint32_t baudrate)
+    {
+    String command = "AT+IPR=" + String(baudrate);
+    String response = _sendCommand(command);
+    Serial.println("Setting RF baud rate to "+String(baudrate)+": "+response);
+    return response == "+OK";
+    }
+
+void RYLR998::setJsonDocument(StaticJsonDocument<250> &document)
+    {
+    _doc = &document;
+    }
+
+String RYLR998::_sendCommand(const String &command, unsigned long timeout)
+    {
+    _serial.println(command);
+    unsigned long start = millis();
+    while (millis() - start < timeout)
+        {
+        if (_serial.available())
+            {
+            String response = _serial.readStringUntil('\n');
+            response.trim();
+            return response;
+            }
+        }
+    return "";
+    }
