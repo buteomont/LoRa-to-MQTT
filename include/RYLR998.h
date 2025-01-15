@@ -1,3 +1,10 @@
+/**************************************************************************
+ * Attention! This file has hard links to both Delivery Box Reporter LoRa *
+ * and LoRa-to-MQTT projects! A change in this file will be reflected in  *
+ * both of these projects, and possibly others!                           *
+ **************************************************************************/ 
+ 
+
 #ifndef RYLR998_H
 #define RYLR998_H
 

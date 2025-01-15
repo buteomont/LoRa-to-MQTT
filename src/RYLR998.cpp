@@ -1,3 +1,10 @@
+/**************************************************************************
+ * Attention! This file has hard links to both Delivery Box Reporter LoRa *
+ * and LoRa-to-MQTT projects! A change in this file will be reflected in  *
+ * both of these projects, and possibly others!                           *
+ **************************************************************************/ 
+ 
+
 #include "RYLR998.h"
 
 RYLR998::RYLR998(int rx, int tx) : _serial(rx, tx), _doc(nullptr) {}
@@ -50,7 +57,10 @@ bool RYLR998::handleIncoming()
 
 bool RYLR998::send(uint16_t address, const String &data)
     {
-    String command = "AT+SEND=" + String(address) + "," + String(data.length()) + "," + data;
+    String command = "AT+SEND=" + 
+                        String(address) + "," + 
+                        String(data.length()) + "," + 
+                        data;
     String response = _sendCommand(command);
     return response == "+OK";
     }
@@ -165,6 +175,7 @@ String RYLR998::getBaudRate()
 
 String RYLR998::_sendCommand(const String &command, unsigned long timeout)
     {
+    Serial.println("sending lora command: "+command);
     _serial.println(command);
     unsigned long start = millis();
     while (millis() - start < timeout)
