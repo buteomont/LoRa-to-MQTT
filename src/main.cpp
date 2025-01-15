@@ -1013,6 +1013,7 @@ void connectToWiFi()
 
 void setup()
   {
+  pinMode(LED_BUILTIN,OUTPUT);// The blue light on the board shows LoRa message
   initSerial();
 
   initSettings();
@@ -1048,6 +1049,12 @@ void setup()
 
 void loop()
   {
+  static ulong ledOffTime=0;
+  if (ledOffTime>millis())
+    digitalWrite(LED_BUILTIN,LED_ON); //show a message came in
+  else
+    digitalWrite(LED_BUILTIN,LED_OFF); //show no message
+
   if (settingsAreValid)
     {      
     if (WiFi.status() != WL_CONNECTED)
@@ -1061,6 +1068,7 @@ void loop()
 
     if (lora.handleIncoming()) 
       {
+      ledOffTime=millis()+1000; //turns on LED to indicate message has arrived
       report();
       }
     mqttClient.loop();
