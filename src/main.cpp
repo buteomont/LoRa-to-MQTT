@@ -262,6 +262,8 @@ void configureLoRa()
                       settings.loRaBandwidth, 
                       settings.loRaCodingRate, 
                       settings.loRaPreamble);
+    lora.setdebug(settings.debug);
+
     }
   }
 
@@ -276,6 +278,8 @@ String getConfigCommand()
     {
     Serial.println(commandString);
     String newCommand=commandString;
+    if (newCommand.length()==0)
+      newCommand='\n'; //to show available commands
 
     commandString = "";
     commandComplete = false;
@@ -286,15 +290,27 @@ String getConfigCommand()
 
 bool processCommand(String cmd)
   {
-  bool commandFound=true; //saves a lot of code
+  if (settings.debug)
+    {
+    Serial.println("Command is |"+cmd+"|");
+    }
 
+  bool commandFound=true; //saves a lot of code
   const char *str=cmd.c_str();
   char *val=NULL;
   char *nme=strtok((char *)str,"=");
   if (nme!=NULL)
     val=strtok(NULL,"=");
 
-  if (nme[0]==13) //a single cr means show current settings
+  if (settings.debug)
+    {
+    Serial.print("First char:");
+    Serial.print("(");
+    Serial.print((byte)nme[0]);
+    Serial.println(")");
+    }
+
+  if (nme[0]=='\n' || nme[0]=='\r' || nme[0]=='\0') //a single cr means show current settings
     {
     showSettings();
     commandFound=false; //command not found
@@ -429,6 +445,7 @@ bool processCommand(String cmd)
           strcpy(val,"0");
         settings.debug=atoi(val)==1?true:false;
         saveSettings();
+        lora.setdebug(settings.debug);
         }
       else if ((strcmp(nme,"resetmqttid")==0)&& (strcmp(val,"yes")==0))
         {
@@ -548,9 +565,12 @@ void report()
 
 boolean publish(char* topic, const char* reading, boolean retain)
   {
-  Serial.print(topic);
-  Serial.print(" ");
-  Serial.println(reading);
+  if (settings.debug)
+    {
+    Serial.print(topic);
+    Serial.print(" ");
+    Serial.println(reading);
+    }
   boolean ok=false;
   connectToWiFi(); //just in case we're disconnected from WiFi
   reconnect(); //also just in case we're disconnected from the broker
@@ -764,11 +784,6 @@ void setup_wifi()
       Serial.println(WiFi.localIP());
       Serial.println();
       }
-    }
-  else if (settings.debug)
-    {
-    Serial.print("Actual network address is ");
-    Serial.println(WiFi.localIP());
     }
   } 
 
@@ -1003,11 +1018,6 @@ void connectToWiFi()
       Serial.println();
       }
     }
-  else if (settings.debug)
-    {
-    Serial.print("Actual network address is ");
-    Serial.println(WiFi.localIP());
-    }
   }
 
 
@@ -1086,13 +1096,18 @@ void incomingSerialData()
   {
   while (Serial.available()) 
     {
-    // get the new byte
-    char inChar = (char)Serial.read();
+    char inChar = (char)Serial.read(); // get the new byte
     Serial.print(inChar); //echo it back to the terminal
+    if (settings.debug && (inChar=='\n' || inChar=='\r'))
+      {
+      Serial.print("(");
+      Serial.print((byte)inChar);
+      Serial.println(")");
+      }
 
     // if the incoming character is a newline, set a flag so the main loop can
     // do something about it 
-    if (inChar == '\n') 
+    if (inChar == '\n' || inChar == '\r') 
       {
       commandComplete = true;
       }

@@ -7,12 +7,17 @@
 
 #include "RYLR998.h"
 
-RYLR998::RYLR998(int rx, int tx) : _serial(rx, tx), _doc(nullptr) {}
+RYLR998::RYLR998(int rx, int tx) : _serial(rx, tx), _doc(nullptr) 
+    {
+    _rxPin=rx;
+    _txPin=tx;
+    }
 
 void RYLR998::begin(long baudRate)
     {
-    Serial.println("Setting LoRa serial baud rate to "+String(baudRate));
-    _serial.begin(baudRate);
+    if (_debug)
+        Serial.println("Setting LoRa serial baud rate to "+String(baudRate));
+    _serial.begin(baudRate, SWSERIAL_8N1, _rxPin, _txPin, false, 120);
     }
 
 void RYLR998::setJsonDocument(StaticJsonDocument<250> &doc)
@@ -27,7 +32,9 @@ bool RYLR998::handleIncoming()
     if (_serial.available())
         {
         String response = _serial.readStringUntil('\n');
-        Serial.println("Received from LoRa:"+response);
+        
+        if (_debug)
+            Serial.println("Received from LoRa:"+response);
 
         if (response.startsWith("+RCV="))
             {
@@ -126,11 +133,10 @@ bool RYLR998::setBaudRate(uint32_t baudrate)
     return response == "+OK";
     }
 
-bool RYLR998::testComm()
+bool RYLR998::setdebug(bool debugMode)
     {
-    String command = "AT";
-    String response = _sendCommand(command);
-    return response == "+OK";
+    _debug=debugMode;
+    return true;
     }
 
 String RYLR998::getMode()
@@ -173,10 +179,19 @@ String RYLR998::getBaudRate()
     return _sendCommand("AT+IPR?");
     }
 
+bool RYLR998::testComm()
+    {
+    String command = "AT";
+    String response = _sendCommand(command);
+    return response == "+OK";
+    }
+
 
 String RYLR998::_sendCommand(const String &command, unsigned long timeout)
     {
-    Serial.println("sending lora command: "+command);
+    if (_debug)
+        Serial.println("sending lora command: "+command);
+
     _serial.println(command);
     unsigned long start = millis();
     while (millis() - start < timeout)
