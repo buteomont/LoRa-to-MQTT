@@ -41,7 +41,7 @@ void showSettings();
 String getConfigCommand();
 bool processCommand(String cmd);
 void checkForCommand();
-void report();
+bool report();
 boolean publish(char* topic, const char* reading, boolean retain);
 void incomingMqttHandler(char* reqTopic, byte* payload, unsigned int length) ;
 void setup_wifi();

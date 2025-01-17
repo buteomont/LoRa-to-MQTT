@@ -137,7 +137,6 @@ StaticJsonDocument<250> doc;
 String commandString = "";     // a String to hold incoming commands from serial
 bool commandComplete = false;  // goes true when enter is pressed
 
-
 // These are the settings that get stored in EEPROM.  They are all in one struct which
 // makes it easier to store and retrieve.
 typedef struct 
@@ -506,16 +505,27 @@ void checkForCommand()
     }
   }
 
+void ack(bool ok)
+  {
+  String tf=ok?"true":"false";
+  String ack="{\"ack\":"+tf+"}";
+  if (String(doc["address"]).length()>0)
+    lora.send((int)doc["address"],ack);
+  if (settings.debug)
+    Serial.println("Replying with "+ok?"ACK":"NAK");
+  }
+
 /************************
  * Do the MQTT thing
  ************************/
-void report()
+bool report()
   {
+  uint8_t allGood=0;
   if (strlen(settings.mqttBrokerAddress)>0)
     {
+    boolean success=false;
     char topic[MQTT_TOPIC_SIZE];
     char reading[18];
-    boolean success=false;
     
     Serial.println();
     serializeJson(doc, Serial); //print it to the console
@@ -528,6 +538,8 @@ void report()
     success=publish(topic,reading,true); //retain
     if (!success)
       Serial.println("************ Failed publishing rssi!");
+    else
+      allGood++;
      
     //publish the radio strength reading
     strcpy(topic,settings.mqttTopicRoot);
@@ -536,6 +548,8 @@ void report()
     success=publish(topic,reading,true); //retain
     if (!success)
       Serial.println("************ Failed publishing rssi!");
+    else
+      allGood++;
    
     //publish the battery voltage
     strcpy(topic,settings.mqttTopicRoot);
@@ -544,6 +558,8 @@ void report()
     success=publish(topic,reading,true); //retain
     if (!success)
       Serial.println("************ Failed publishing battery voltage!");
+    else
+      allGood++;
 
     //publish the distance measurement
     strcpy(topic,settings.mqttTopicRoot);
@@ -552,6 +568,8 @@ void report()
     success=publish(topic,reading,true); //retain
     if (!success)
       Serial.println("************ Failed publishing distance measurement!");
+    else
+      allGood++;
 
     //publish the object detection state
     strcpy(topic,settings.mqttTopicRoot);
@@ -560,7 +578,12 @@ void report()
     success=publish(topic,reading,true); //retain
     if (!success)
       Serial.println("************ Failed publishing sensor state!");
+    else
+      allGood++;
     }
+  bool ok=allGood>=5;
+  ack(ok);
+  return ok;
   }
 
 boolean publish(char* topic, const char* reading, boolean retain)

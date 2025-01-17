@@ -18,6 +18,7 @@ void RYLR998::begin(long baudRate)
     if (_debug)
         Serial.println("Setting LoRa serial baud rate to "+String(baudRate));
     _serial.begin(baudRate, SWSERIAL_8N1, _rxPin, _txPin, false, 120);
+    _baudrate=baudRate; //for calculation in send()
     }
 
 void RYLR998::setJsonDocument(StaticJsonDocument<250> &doc)
@@ -49,7 +50,7 @@ bool RYLR998::handleIncoming()
                 DeserializationError error = deserializeJson(*_doc, jsonData);
                 if (error)
                     {
-                    Serial.println(F("deserializeJson() failed. Error is "));
+                    Serial.print(F("deserializeJson() failed. Error is: "));
                     Serial.println(error.c_str());
                     }
                 (*_doc)["address"]=atoi(address.c_str());
@@ -70,6 +71,8 @@ bool RYLR998::send(uint16_t address, const String &data)
                         String(data.length()) + "," + 
                         data;
     String response = _sendCommand(command);
+    uint16_t bufferFlushTime=_baudrate/(data.length()*10);
+    delay(bufferFlushTime); //let the buffer empty
     return response == "+OK";
     }
 
