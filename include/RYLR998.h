@@ -45,9 +45,8 @@ class RYLR998
         int8_t _txPin;
         bool _debug=false;
         StaticJsonDocument<250>* _doc;
-        String _sendCommand(const String& command, unsigned long timeout = 1000);
+        String _sendCommand(const String& command, unsigned long timeout = 2000);
         void _parseRcvString(const String& input, String& address, String& length, String& jsonData, String& rssi, String& snr);
-        long _baudrate;
     };
 
 #endif // RYLR998_H

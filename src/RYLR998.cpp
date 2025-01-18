@@ -3,7 +3,93 @@
  * and LoRa-to-MQTT projects! A change in this file will be reflected in  *
  * both of these projects, and possibly others!                           *
  **************************************************************************/ 
- 
+/*  ****** RYLR998 Commands ********
+ * 
+ *  This is a comprehensive list of AT commands for the RYLR998 LoRa module:
+ * 
+ * - Basic Commands
+ * AT: Test if the module can respond to commands
+ * AT+RESET: Perform a software reset of the module
+ *
+ * Configuration Commands
+ * AT+MODE=<Parameter>[,<RX time>,<Low speed time>]: Set the wireless work mode
+ *   Where:
+ *   <Parameter> ranges from 0 to 2:
+ *     0: Transceiver mode (default)
+ *     1: Sleep mode
+ *     2: Smart receiving mode for power saving
+ *   <RX time>: 30ms to 60000ms (default is 1000ms)
+ *     Used in Smart receiving mode to set the active receiving time
+ *   <Low speed time>: 30ms to 60000ms
+ *     Used in Smart receiving mode to set the low-power state duration
+ * AT+IPR: Set the UART baud rate
+ * AT+BAND: Set RF frequency in Hz
+ * AT+PARAMETER=<Spreading Factor>,<Bandwidth>,<Coding Rate>,<Programmed Preamble>: Set the RF parameters 
+ *   (spreading factor, bandwidth, coding rate, preamble)
+ *   - Parameters
+ *     - Spreading Factor (SF): Range 5-11 (default 9)
+ *       Higher SF improves sensitivity but increases transmission time
+ *       SF7 to SF9 at 125kHz, SF7 to SF10 at 250kHz, and SF7 to SF11 at 500kHz
+ *     - Bandwidth (BW): 7-9
+ *       7: 125 KHz (default)
+ *       8: 250 KHz
+ *       9: 500 KHz
+ *       Smaller bandwidth improves sensitivity but increases transmission time
+ *     - Coding Rate (CR): 1-4 (default 1)
+ *       1: 4/5
+ *       2: 4/6
+ *       3: 4/7
+ *       4: 4/8
+ *       Lower coding rate is faster
+ *     - Programmed Preamble: Default 12
+ *       When NETWORKID=18, can be set from 4 to 24
+ *       For other NETWORKID values, must be set to 12
+ *       Larger preamble reduces data loss but increases transmission time
+ * AT+ADDRESS: Set the ADDRESS ID of the module (0 to 65535)
+ * AT+NETWORKID: Set the network ID (3 to 15, or 18 (default))
+ * AT+CPIN: Set the domain password
+ *   - The password must be exactly 8 characters long
+ *   - Valid range: 00000001 to FFFFFFFF (hexadecimal)
+ *   - Only modules using the same password can recognize and communicate with each other
+ * AT+CRFOP: Set the RF output power (0 to 22 dBm)
+ *
+ * - Communication Commands
+ * AT+SEND=<Address>,<Payload Length>,<Data>: Send data to the appointed address (250 bytes max)
+ *   Use address 0 to broadcast to all addresses.
+ *   For payloads greater than 100 bytes, the suggested setting is "AT+PARAMETER=8,7,1,12"
+ *
+ * - Query Commands
+ * AT+UID?: Inquire module ID
+ * AT+VER?: Inquire the firmware version
+ *
+ * - Other Commands
+ * AT+FACTORY: Reset all parameters to manufacturer defaults
+ *
+ * - Response Formats
+ * +RCV=<Address>,<Length>,<Data>,<RSSI>,<SNR>: Shows received data actively
+ * +OK: Indicates successful command execution
+ * +ERR: Indicates an error, followed by an error code
+ * +READY: Reset was successful and waiting for a command
+ *
+ * You can also add a question mark at the end of most commands
+ * to query their current settings. 
+ *
+ * - The Error Codes that can be returned are:
+ * +ERR=1: There is no "enter" or 0x0D 0x0A (carriage return and line feed) at the end of the AT Command.
+ * +ERR=2: The head of the AT command is not an "AT" string.
+ * +ERR=4: Unknown command or the data to be sent does not match the actual length.
+ * +ERR=5: The data to be sent does not match the actual length.
+ * +ERR=10: TX is over time (transmission timeout).
+ * +ERR=12: CRC error.
+ * +ERR=13: TX data exceeds 240 bytes.
+ * +ERR=14: Failed to write flash memory.
+ * +ERR=15: Unknown failure.
+ * +ERR=17: Last TX was not completed.
+ * +ERR=18: Preamble value is not allowed.
+ * +ERR=19: RX failed, Header error.
+ * **** NOTE that I have seen many bogus "+ERR=2" codes. Probably a bug in the RYLR998.
+ */
+
 
 #include "RYLR998.h"
 
@@ -17,8 +103,7 @@ void RYLR998::begin(long baudRate)
     {
     if (_debug)
         Serial.println("Setting LoRa serial baud rate to "+String(baudRate));
-    _serial.begin(baudRate, SWSERIAL_8N1, _rxPin, _txPin, false, 120);
-    _baudrate=baudRate; //for calculation in send()
+    _serial.begin(baudRate, SWSERIAL_8N1, _rxPin, _txPin, false, 120,1200);
     }
 
 void RYLR998::setJsonDocument(StaticJsonDocument<250> &doc)
@@ -29,7 +114,6 @@ void RYLR998::setJsonDocument(StaticJsonDocument<250> &doc)
 bool RYLR998::handleIncoming()
     {
     bool ok=false;
-    
     if (_serial.available())
         {
         String response = _serial.readStringUntil('\n');
@@ -53,6 +137,8 @@ bool RYLR998::handleIncoming()
                     Serial.print(F("deserializeJson() failed. Error is: "));
                     Serial.println(error.c_str());
                     }
+
+                //These are the standard data that go with all messages
                 (*_doc)["address"]=atoi(address.c_str());
                 (*_doc)["length"]=atoi(length.c_str());
                 (*_doc)["rssi"]=atoi(rssi.c_str());
@@ -71,8 +157,8 @@ bool RYLR998::send(uint16_t address, const String &data)
                         String(data.length()) + "," + 
                         data;
     String response = _sendCommand(command);
-    uint16_t bufferFlushTime=_baudrate/(data.length()*10);
-    delay(bufferFlushTime); //let the buffer empty
+    if (response != "+OK")
+        Serial.println("Response from RYLR998: "+response);
     return response == "+OK";
     }
 
@@ -203,6 +289,8 @@ String RYLR998::_sendCommand(const String &command, unsigned long timeout)
             {
             String response = _serial.readStringUntil('\n');
             response.trim();
+            if (_debug)
+                Serial.println(response);
             return response;
             }
         }

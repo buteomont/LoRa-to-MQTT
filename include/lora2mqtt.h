@@ -37,6 +37,7 @@
 #define DEFAULT_LORA_CODING_RATE 1
 #define DEFAULT_LORA_PREAMBLE 12
 #define DEFAULT_LORA_BAUD_RATE 115200
+#define DEFAULT_LORA_POWER 22
 void showSettings();
 String getConfigCommand();
 bool processCommand(String cmd);

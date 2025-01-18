@@ -161,6 +161,7 @@ typedef struct
   byte loRaCodingRate=DEFAULT_LORA_CODING_RATE;
   byte loRaPreamble=DEFAULT_LORA_PREAMBLE;
   uint32_t loRaBaudRate=DEFAULT_LORA_BAUD_RATE; //both for RF and serial comms
+  uint8_t loRaPower=DEFAULT_LORA_POWER; //dbm
   } conf;
 conf settings; //all settings in one struct makes it easier to store in EEPROM
 boolean settingsAreValid=false;
@@ -236,6 +237,9 @@ void showSettings()
   Serial.print("loRaBaudRate=<baud rate> (");
   Serial.print(settings.loRaBaudRate);
   Serial.println(")");
+  Serial.print("loRaPower=<RF power in dbm> (");
+  Serial.print(settings.loRaPower);
+  Serial.println(")");
 
   Serial.print("MQTT Client ID is ");
   Serial.println(settings.mqttClientId);
@@ -256,6 +260,7 @@ void configureLoRa()
     lora.setAddress(settings.loRaAddress);
     lora.setNetworkID(settings.loRaNetworkID);
     lora.setBand(settings.loRaBand);
+    lora.setRFPower(settings.loRaPower);
     lora.setBaudRate(settings.loRaBaudRate);
     lora.setParameter(settings.loRaSpreadingFactor, 
                       settings.loRaBandwidth, 
@@ -435,6 +440,14 @@ bool processCommand(String cmd)
         if (!val)
           strcpy(val,"0");
         settings.loRaBaudRate=atoi(val);
+        configureLoRa();
+        saveSettings();
+        }
+      else if (strcmp(nme,"loRaPower")==0)
+        {
+        if (!val)
+          strcpy(val,"0");
+        settings.loRaPower=atoi(val);
         configureLoRa();
         saveSettings();
         }
@@ -1104,6 +1117,10 @@ void loop()
       ledOffTime=millis()+1000; //turns on LED to indicate message has arrived
       report();
       }
+    // else
+    //   {
+    //   ack(false);
+    //   }
     mqttClient.loop();
     }
   yield();
