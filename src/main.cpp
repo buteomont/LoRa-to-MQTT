@@ -294,25 +294,12 @@ String getConfigCommand()
 
 bool processCommand(String cmd)
   {
-  if (settings.debug)
-    {
-    Serial.println("Command is |"+cmd+"|");
-    }
-
   bool commandFound=true; //saves a lot of code
   const char *str=cmd.c_str();
   char *val=NULL;
   char *nme=strtok((char *)str,"=");
   if (nme!=NULL)
     val=strtok(NULL,"=");
-
-  if (settings.debug)
-    {
-    Serial.print("First char:");
-    Serial.print("(");
-    Serial.print((byte)nme[0]);
-    Serial.println(")");
-    }
 
   if (nme[0]=='\n' || nme[0]=='\r' || nme[0]=='\0') //a single cr means show current settings
     {
@@ -1138,12 +1125,6 @@ void incomingSerialData()
     {
     char inChar = (char)Serial.read(); // get the new byte
     Serial.print(inChar); //echo it back to the terminal
-    if (settings.debug && (inChar=='\n' || inChar=='\r'))
-      {
-      Serial.print("(");
-      Serial.print((byte)inChar);
-      Serial.println(")");
-      }
 
     // if the incoming character is a newline, set a flag so the main loop can
     // do something about it 
