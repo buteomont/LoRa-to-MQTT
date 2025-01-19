@@ -161,7 +161,7 @@ typedef struct
   byte loRaCodingRate=DEFAULT_LORA_CODING_RATE;
   byte loRaPreamble=DEFAULT_LORA_PREAMBLE;
   uint32_t loRaBaudRate=DEFAULT_LORA_BAUD_RATE; //both for RF and serial comms
-  uint8_t loRaPower=DEFAULT_LORA_POWER; //dbm
+  int loRaPower=DEFAULT_LORA_POWER; //dbm
   } conf;
 conf settings; //all settings in one struct makes it easier to store in EEPROM
 boolean settingsAreValid=false;
@@ -252,22 +252,16 @@ void showSettings()
   Serial.println(settingsAreValid?"valid.":"incomplete.");
   }
 
-// Configure LoRa module
-void configureLoRa()
+// Configure some LoRa parameters. I don't know why these particular ones
+// are set all in one bunch on the RYLR998
+void setLoRaParameters()
   {
   if (settingsAreValid)
     {
-    lora.setAddress(settings.loRaAddress);
-    lora.setNetworkID(settings.loRaNetworkID);
-    lora.setBand(settings.loRaBand);
-    lora.setRFPower(settings.loRaPower);
-    lora.setBaudRate(settings.loRaBaudRate);
     lora.setParameter(settings.loRaSpreadingFactor, 
                       settings.loRaBandwidth, 
                       settings.loRaCodingRate, 
                       settings.loRaPreamble);
-    lora.setdebug(settings.debug);
-
     }
   }
 
@@ -371,72 +365,78 @@ bool processCommand(String cmd)
         if (!val)
           strcpy(val,"0");
         settings.loRaAddress=atoi(val);
-        configureLoRa();
         saveSettings();
+        lora.setAddress(settings.loRaAddress);
         }
       else if (strcmp(nme,"loRaBand")==0)
         {
         if (!val)
           strcpy(val,"0");
         settings.loRaBand=atoi(val);
-        configureLoRa();
         saveSettings();
+        lora.setBand(settings.loRaBand);
         }
       else if (strcmp(nme,"loRaBandwidth")==0)
         {
         if (!val)
           strcpy(val,"0");
         settings.loRaBandwidth=atoi(val);
-        configureLoRa();
         saveSettings();
+        setLoRaParameters();
         }
       else if (strcmp(nme,"loRaCodingRate")==0)
         {
         if (!val)
           strcpy(val,"0");
         settings.loRaCodingRate=atoi(val);
-        configureLoRa();
         saveSettings();
+        setLoRaParameters();
         }
       else if (strcmp(nme,"loRaNetworkID")==0)
         {
         if (!val)
           strcpy(val,"0");
         settings.loRaNetworkID=atoi(val);
-        configureLoRa();
         saveSettings();
+        lora.setNetworkID(settings.loRaNetworkID);
         }
       else if (strcmp(nme,"loRaSpreadingFactor")==0)
         {
         if (!val)
           strcpy(val,"0");
         settings.loRaSpreadingFactor=atoi(val);
-        configureLoRa();
         saveSettings();
+        setLoRaParameters();
         }
       else if (strcmp(nme,"loRaPreamble")==0)
         {
         if (!val)
           strcpy(val,"0");
         settings.loRaPreamble=atoi(val);
-        configureLoRa();
         saveSettings();
+        setLoRaParameters();
         }
       else if (strcmp(nme,"loRaBaudRate")==0)
         {
         if (!val)
           strcpy(val,"0");
         settings.loRaBaudRate=atoi(val);
-        configureLoRa();
         saveSettings();
+        lora.setBaudRate(settings.loRaBaudRate);
+
+        //this affects the baud rate of the software serial connection
+        //so we need to reboot
+        Serial.println("********** Rebooting ************");
+        delay(2000);
+        ESP.restart();
         }
       else if (strcmp(nme,"loRaPower")==0)
         {
         if (!val)
           strcpy(val,"0");
         settings.loRaPower=atoi(val);
-        configureLoRa();
         saveSettings();
+        lora.setRFPower(settings.loRaPower);
         }
       else if (strcmp(nme,"debug")==0)
         {
@@ -489,6 +489,7 @@ void initializeSettings()
   settings.loRaCodingRate=DEFAULT_LORA_CODING_RATE;
   settings.loRaPreamble=DEFAULT_LORA_PREAMBLE;
   settings.loRaBaudRate=DEFAULT_LORA_BAUD_RATE;
+  settings.loRaPower=DEFAULT_LORA_POWER;
   generateMqttClientId(settings.mqttClientId);
   }
 
@@ -924,10 +925,8 @@ void deserialize(StaticJsonDocument<250> &doc)
 
 void initLoRa()
   {
-  //loraSerial.begin(settings.loRaBaudRate);
   lora.begin(settings.loRaBaudRate);
   lora.setJsonDocument(doc);
-  configureLoRa();
  
   Serial.println(lora.getMode());
   Serial.println(lora.getBand());

@@ -102,8 +102,15 @@ RYLR998::RYLR998(int rx, int tx) : _serial(rx, tx), _doc(nullptr)
 void RYLR998::begin(long baudRate)
     {
     if (_debug)
-        Serial.println("Setting LoRa serial baud rate to "+String(baudRate));
+        Serial.println("LORA:Setting softwareSerial baud rate to "+String(baudRate));
     _serial.begin(baudRate, SWSERIAL_8N1, _rxPin, _txPin, false, 120,1200);
+    
+    //clear out any lingering buffer contents
+    _serial.flush();
+    while(_serial.available())
+      {
+      _serial.read(); 
+      }
     }
 
 void RYLR998::setJsonDocument(StaticJsonDocument<250> &doc)
@@ -119,7 +126,7 @@ bool RYLR998::handleIncoming()
         String response = _serial.readStringUntil('\n');
         
         if (_debug)
-            Serial.println("Received from LoRa:"+response);
+            Serial.println("LORA:Received from LoRa:"+response);
 
         if (response.startsWith("+RCV="))
             {
@@ -134,10 +141,9 @@ bool RYLR998::handleIncoming()
                 DeserializationError error = deserializeJson(*_doc, jsonData);
                 if (error)
                     {
-                    Serial.print(F("deserializeJson() failed. Error is: "));
+                    Serial.print(F("LORA:deserializeJson() failed. Error is: "));
                     Serial.println(error.c_str());
                     }
-
                 //These are the standard data that go with all messages
                 (*_doc)["address"]=atoi(address.c_str());
                 (*_doc)["length"]=atoi(length.c_str());
@@ -158,7 +164,7 @@ bool RYLR998::send(uint16_t address, const String &data)
                         data;
     String response = _sendCommand(command);
     if (response != "+OK")
-        Serial.println("Response from RYLR998: "+response);
+        Serial.println("LORA:Response from RYLR998: "+response);
     return response == "+OK";
     }
 
@@ -230,42 +236,58 @@ bool RYLR998::setdebug(bool debugMode)
 
 String RYLR998::getMode()
     {
-    return _sendCommand("AT+MODE?");
+    String response=_sendCommand("AT+MODE?");
+    int equalSignIndex = response.indexOf('=');
+    return response.substring(equalSignIndex + 1);
     }  
      
 String RYLR998::getBand()
     {
-    return _sendCommand("AT+BAND?");
+    String response= _sendCommand("AT+BAND?");
+    int equalSignIndex = response.indexOf('=');
+    return response.substring(equalSignIndex + 1);
     }
 
 String RYLR998::getParameter()
     {
-    return _sendCommand("AT+PARAMETER?");
+    String response= _sendCommand("AT+PARAMETER?");
+    int equalSignIndex = response.indexOf('=');
+    return response.substring(equalSignIndex + 1);
     }
 
 String RYLR998::getAddress()
     {
-    return _sendCommand("AT+ADDRESS?");
+    String response= _sendCommand("AT+ADDRESS?");
+    int equalSignIndex = response.indexOf('=');
+    return response.substring(equalSignIndex + 1);
     }   
 
 String RYLR998::getNetworkID()
     {
-    return _sendCommand("AT+NETWORKID?");
+    String response= _sendCommand("AT+NETWORKID?");
+    int equalSignIndex = response.indexOf('=');
+    return response.substring(equalSignIndex + 1);
     }
 
 String RYLR998::getCPIN()
     {
-    return _sendCommand("AT+CPIN?");
+    String response= _sendCommand("AT+CPIN?");
+    int equalSignIndex = response.indexOf('=');
+    return response.substring(equalSignIndex + 1);
     }
 
 String RYLR998::getRFPower()
     {
-    return _sendCommand("AT+CRFOP?");
+    String response= _sendCommand("AT+CRFOP?");
+    int equalSignIndex = response.indexOf('=');
+    return response.substring(equalSignIndex + 1);
     }
 
 String RYLR998::getBaudRate()
     {
-    return _sendCommand("AT+IPR?");
+    String response= _sendCommand("AT+IPR?");
+    int equalSignIndex = response.indexOf('=');
+    return response.substring(equalSignIndex + 1);
     }
 
 bool RYLR998::testComm()
@@ -279,22 +301,23 @@ bool RYLR998::testComm()
 String RYLR998::_sendCommand(const String &command, unsigned long timeout)
     {
     if (_debug)
-        Serial.println("sending lora command: "+command);
+        Serial.println("LORA:Sending lora command:"+command);
 
     _serial.println(command);
     unsigned long start = millis();
+    String response = "";
     while (millis() - start < timeout)
+      {
+      if (_serial.available())
         {
-        if (_serial.available())
-            {
-            String response = _serial.readStringUntil('\n');
-            response.trim();
-            if (_debug)
-                Serial.println(response);
-            return response;
-            }
+        response = _serial.readStringUntil('\n');
+        response.trim();
+        if (_debug)
+            Serial.println("LORA:"+response);
+        break;
         }
-    return "";
+      }
+    return response;
     }
 
 void RYLR998::_parseRcvString(const String& input, String& address, String& length, String& jsonData, String& rssi, String& snr) 
