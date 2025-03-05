@@ -124,6 +124,8 @@
 #include <PubSubClient.h>
 #include <EEPROM.h>
 #include <ArduinoJson.h>
+#include <Adafruit_SSD1306.h>
+#include <Adafruit_GFX.h>
 #include "RYLR998.h"
 #include "lora2mqtt.h"
 
@@ -133,6 +135,7 @@ WiFiClient wifiClient;
 RYLR998 lora(LORA_RX_PIN, LORA_TX_PIN);
 PubSubClient mqttClient(wifiClient);
 StaticJsonDocument<250> doc;
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
 String commandString = "";     // a String to hold incoming commands from serial
 bool commandComplete = false;  // goes true when enter is pressed
@@ -153,6 +156,7 @@ typedef struct
   bool debug=false;
   char address[ADDRESS_SIZE]=""; //static address for this device
   char netmask[ADDRESS_SIZE]=""; //size of network
+  bool invertdisplay=false;   //rotate display 180 degrees
   int loRaAddress=DEFAULT_LORA_ADDRESS;
   int loRaNetworkID=DEFAULT_LORA_NETWORK_ID;
   uint32_t loRaBand=DEFAULT_LORA_BAND; //(915000000);
@@ -179,6 +183,86 @@ typedef struct
   uint8_t address;
   } box;
 box boxStatus; 
+
+
+boolean rssiShowing=false; //used to redraw the RSSI indicator after clearing display
+String lastMessage=""; //contains the last message sent to display. Sometimes need to reshow it
+
+
+void drawWifiStrength(int32_t rssi)
+  {
+  int strength = map(rssi, -100, -50, 0, 4);
+  static int xLoc=SCREEN_WIDTH-RSSI_DOT_RADIUS;
+  static int yLoc=SCREEN_HEIGHT-RSSI_DOT_RADIUS;
+  
+  // Draw the dot
+  display.fillCircle(xLoc, yLoc, RSSI_DOT_RADIUS, SSD1306_WHITE);
+  
+  // Draw the arcs
+  for (int i = 0; i < 4; i++) 
+    {
+    if (i < strength) 
+      {
+      display.drawCircle(xLoc, yLoc, RSSI_DOT_RADIUS + (i * 5), SSD1306_WHITE);
+      display.drawCircle(xLoc, yLoc, RSSI_DOT_RADIUS+1 + (i * 5), SSD1306_WHITE);
+      display.drawCircle(xLoc, yLoc, RSSI_DOT_RADIUS+2 + (i * 5), SSD1306_WHITE);
+     }
+    else 
+      {
+      display.drawCircle(xLoc, yLoc, RSSI_DOT_RADIUS + (i * 5), SSD1306_WHITE);
+      display.drawCircle(xLoc, yLoc, RSSI_DOT_RADIUS+1 + (i * 5), SSD1306_BLACK);
+      display.drawCircle(xLoc, yLoc, RSSI_DOT_RADIUS+2 + (i * 5), SSD1306_BLACK);
+      } 
+    }
+  rssiShowing=true; //keep it up
+//  display.display();
+  }
+
+
+//display something on the screen
+void show(String msg)
+  {
+  if (msg==lastMessage)
+    return;
+    
+  lastMessage=msg; //in case we need to redraw it
+
+  if (settings.debug)
+    {
+    Serial.print("Length of display message:");
+    Serial.println(msg.length());
+    }
+  display.clearDisplay(); // clear the screen
+  display.setCursor(0, 0);  // Top-left corner
+
+  if (msg.length()>20)
+    {
+    display.setTextSize(1);      // tiny text
+    }
+  else if (msg.length()>7 || rssiShowing) //make room for rssi indicator
+    {
+    display.setTextSize(2);      // small text
+    }
+  else
+    {
+    display.setTextSize(3);      // Normal 1:1 pixel scale
+    }
+  display.println(msg);
+  if (rssiShowing)
+    {
+    drawWifiStrength(WiFi.RSSI());
+    }
+display.display(); // move the buffer contents to the OLED
+  }
+
+
+void show(uint16_t val, String suffix)
+  {
+  String msg=String(val)+suffix;
+  show(msg);
+  }
+
+
 
 
 void showSettings()
@@ -212,6 +296,9 @@ void showSettings()
   Serial.println(")");
   Serial.print("debug=1|0 (");
   Serial.print(settings.debug);
+  Serial.println(")");
+  Serial.print("invertdisplay=1|0 (");
+  Serial.print(settings.invertdisplay);
   Serial.println(")");
   Serial.print("loRaAddress=<LoRa module's address 0-65535> (");
   Serial.print(settings.loRaAddress);
@@ -360,6 +447,14 @@ bool processCommand(String cmd)
         strcpy(settings.netmask,val);
         saveSettings();
         }
+      else if (strcmp(nme,"invertdisplay")==0)
+        {
+        if (!val)
+          strcpy(val,"0");
+        settings.invertdisplay=atoi(val)==1?true:false;
+        display.setRotation(settings.invertdisplay?2:0); //go ahead and do it
+        saveSettings();
+        }
       else if (strcmp(nme,"loRaAddress")==0)
         {
         if (!val)
@@ -481,6 +576,7 @@ void initializeSettings()
   strcpy(settings.mqttTopicRoot,"");
   strcpy(settings.address,"");
   strcpy(settings.netmask,"255.255.255.0");
+  settings.invertdisplay=false;
   settings.loRaAddress=DEFAULT_LORA_ADDRESS;
   settings.loRaNetworkID=DEFAULT_LORA_NETWORK_ID;
   settings.loRaBand=DEFAULT_LORA_BAND;
@@ -506,14 +602,17 @@ void checkForCommand()
     }
   }
 
-void ack(bool ok)
+//Acknowledge receipt of LoRa message and status of MQTT report
+bool ack(bool ok)
   {
+  bool good=false;
   String tf=ok?"true":"false";
   String ack="{\"ack\":"+tf+"}";
   if (String(doc["address"]).length()>0)
-    lora.send((int)doc["address"],ack);
+    good=lora.send((int)doc["address"],ack);
   if (settings.debug)
     Serial.println("Replying with "+ok?"ACK":"NAK");
+  return good;
   }
 
 /************************
@@ -522,70 +621,141 @@ void ack(bool ok)
 bool report()
   {
   uint8_t allGood=0;
-  if (strlen(settings.mqttBrokerAddress)>0)
+  char topic[MQTT_TOPIC_SIZE];
+  char reading[18];
+  
+  Serial.println();
+  serializeJson(doc, Serial); //print it to the console
+  Serial.println();
+
+  // iterate through all of the KV pairs and report them
+  JsonObject root = doc.as<JsonObject>();
+  for (JsonPair kv : root)
     {
-    boolean success=false;
-    char topic[MQTT_TOPIC_SIZE];
-    char reading[18];
-    
-    Serial.println();
-    serializeJson(doc, Serial); //print it to the console
-    Serial.println();
+    const char* key = kv.key().c_str();  // Get the key as a C string
+    JsonVariant value = kv.value();     // Get the value
 
-    //publish the radio signal/noise ratio
+    // Print and publish the key and value
     strcpy(topic,settings.mqttTopicRoot);
-    strcat(topic,MQTT_TOPIC_SNR);
-    sprintf(reading,"%d",(int)doc["snr"]); 
-    success=publish(topic,reading,true); //retain
-    if (!success)
-      Serial.println("************ Failed publishing rssi!");
-    else
-      allGood++;
-     
-    //publish the radio strength reading
-    strcpy(topic,settings.mqttTopicRoot);
-    strcat(topic,MQTT_TOPIC_RSSI);
-    sprintf(reading,"%d",(int)doc["rssi"]); 
-    success=publish(topic,reading,true); //retain
-    if (!success)
-      Serial.println("************ Failed publishing rssi!");
-    else
-      allGood++;
-   
-    //publish the battery voltage
-    strcpy(topic,settings.mqttTopicRoot);
-    strcat(topic,MQTT_TOPIC_BATTERY);
-    sprintf(reading,"%.2f",(float)doc["battery"]); 
-    success=publish(topic,reading,true); //retain
-    if (!success)
-      Serial.println("************ Failed publishing battery voltage!");
+    strcat(topic,key);
+
+    Serial.print(key);
+    Serial.print(":");
+    if (value.is<const char*>()) 
+      {
+      Serial.println(value.as<const char*>());
+      sprintf(reading,"%s",value.as<const char*>()); 
+      } 
+    else if (value.is<int>()) 
+      {
+      Serial.println(value.as<int>());
+      sprintf(reading,"%d",value.as<int>()); 
+      }
+    else if (value.is<double>()) 
+      {
+      Serial.println(value.as<double>());
+      sprintf(reading,"%.2f",value.as<double>()); 
+      } 
+    else if (value.is<bool>()) 
+      {
+      Serial.println(value.as<bool>() ? "true" : "false");
+      sprintf(reading,"%s",value.as<bool>() ? "true" : "false"); 
+      } 
+    else 
+      {
+      Serial.println("Unknown type");
+      }
+
+    if (strlen(settings.mqttBrokerAddress)>0) //only if broker is configured
+      {
+      boolean success=false;
+      success=publish(topic,reading,true); //retain
+      if (!success)
+        {
+        Serial.print("************ Failed publishing ");
+        Serial.print(key);
+        Serial.println("!");
+        }
+      else
+        allGood++;
+      }
     else
       allGood++;
 
-    //publish the distance measurement
-    strcpy(topic,settings.mqttTopicRoot);
-    strcat(topic,MQTT_TOPIC_DISTANCE);
-    sprintf(reading,"%d",(int)doc["distance"]); 
-    success=publish(topic,reading,true); //retain
-    if (!success)
-      Serial.println("************ Failed publishing distance measurement!");
-    else
-      allGood++;
-
-    //publish the object detection state
-    strcpy(topic,settings.mqttTopicRoot);
-    strcat(topic,MQTT_TOPIC_STATE);
-    sprintf(reading,"%s",doc["isPresent"]?"YES":"NO"); //item within range window
-    success=publish(topic,reading,true); //retain
-    if (!success)
-      Serial.println("************ Failed publishing sensor state!");
-    else
-      allGood++;
+    show(String(key)+":"+String(value));
+    delay(500); //give me time to read it
     }
-  bool ok=allGood>=5;
-  ack(ok);
-  return ok;
-  }
+
+
+    // //publish the radio signal/noise ratio
+    // strcpy(topic,settings.mqttTopicRoot);
+    // strcat(topic,MQTT_TOPIC_SNR);
+    // sprintf(reading,"%d",(int)doc["snr"]); 
+    // success=publish(topic,reading,true); //retain
+    // if (!success)
+    //   Serial.println("************ Failed publishing rssi!");
+    // else
+    //   allGood++;
+     
+    // //publish the radio strength reading
+    // strcpy(topic,settings.mqttTopicRoot);
+    // strcat(topic,MQTT_TOPIC_RSSI);
+    // sprintf(reading,"%d",(int)doc["rssi"]); 
+    // success=publish(topic,reading,true); //retain
+    // if (!success)
+    //   Serial.println("************ Failed publishing rssi!");
+    // else
+    //   allGood++;
+   
+    // //publish the battery voltage
+    // strcpy(topic,settings.mqttTopicRoot);
+    // strcat(topic,MQTT_TOPIC_BATTERY);
+    // sprintf(reading,"%.2f",(float)doc["battery"]); 
+    // success=publish(topic,reading,true); //retain
+    // if (!success)
+    //   Serial.println("************ Failed publishing battery voltage!");
+    // else
+    //   allGood++;
+
+    // //publish the distance measurement
+    // strcpy(topic,settings.mqttTopicRoot);
+    // strcat(topic,MQTT_TOPIC_DISTANCE);
+    // sprintf(reading,"%d",(int)doc["distance"]); 
+    // success=publish(topic,reading,true); //retain
+    // if (!success)
+    //   Serial.println("************ Failed publishing distance measurement!");
+    // else
+    //   allGood++;
+    // show(reading);  //show this one on the display
+
+    // //publish the object detection state
+    // strcpy(topic,settings.mqttTopicRoot);
+    // strcat(topic,MQTT_TOPIC_STATE);
+    // sprintf(reading,"%s",doc["isPresent"]?"YES":"NO"); //item within range window
+    // success=publish(topic,reading,true); //retain
+    // if (!success)
+    //   Serial.println("************ Failed publishing sensor state!");
+    // else
+    //   allGood++;
+    // }
+
+    
+    bool ok=allGood>=root.size();
+    bool ackStatus=ack(ok);
+    Serial.print("Publish ");
+    Serial.println(ok?"OK":"Failed");
+    Serial.print("Ack ");
+    Serial.println(ackStatus?"OK.":"failed.");
+    if (!ok)
+      show("Pub Fail.");
+    if (!ackStatus)
+      {
+      delay(1000);
+      show("Ack Fail.");
+      }
+    return ok;
+    }
+
 
 boolean publish(char* topic, const char* reading, boolean retain)
   {
@@ -807,6 +977,7 @@ void setup_wifi()
       Serial.print("Connected to network with address ");
       Serial.println(WiFi.localIP());
       Serial.println();
+      show(WiFi.localIP().toString());
       }
     }
   } 
@@ -826,7 +997,8 @@ void reconnect()
       {
       // Loop until we're reconnected
       while (!mqttClient.connected()) 
-        {      
+        {
+        show("Connecting\nto MQTT");    
         Serial.print("Attempting MQTT connection...");
 
         mqttClient.setBufferSize(JSON_STATUS_SIZE); //default (256) isn't big enough
@@ -838,6 +1010,7 @@ void reconnect()
         if (mqttClient.connect(settings.mqttClientId,settings.mqttUsername,settings.mqttPassword))
           {
           Serial.println("connected to MQTT broker.");
+          show("Connected\nto MQTT");
 
           //resubscribe to the incoming message topic
           char topic[MQTT_TOPIC_SIZE];
@@ -979,6 +1152,10 @@ void initSettings()
 
   loadSettings(); //set the values from eeprom 
 
+  //show the MAC address
+  Serial.print("ESP8266 MAC Address: ");
+  Serial.println(WiFi.macAddress());
+
   if (settings.mqttBrokerPort < 0) //then this must be the first powerup
     {
     Serial.println("\n*********************** Resetting All EEPROM Values ************************");
@@ -996,6 +1173,7 @@ void connectToWiFi()
   {
   if (settingsAreValid && WiFi.status() != WL_CONNECTED)
     {
+    show("Connecting\nto WiFi");
     Serial.print("Attempting to connect to WPA SSID \"");
     Serial.print(settings.ssid);
     Serial.println("\"");
@@ -1003,6 +1181,7 @@ void connectToWiFi()
 //    WiFi.forceSleepWake(); //turn on the radio
 //    delay(1);              //return control to let it come on
     
+    WiFi.persistent(false);  // Disables saving WiFi config to flash
     WiFi.mode(WIFI_STA); //station mode, we are only a client in the wifi world
 
     if (ip.isSet()) //Go with a dynamic address if no valid IP has been entered
@@ -1038,9 +1217,41 @@ void connectToWiFi()
       Serial.print("\nConnected to network with address ");
       Serial.println(WiFi.localIP());
       Serial.println();
+          // if this is just turning on, reshow the last message except smaller
+      if (!rssiShowing)
+        {
+        rssiShowing=true;
+        show(lastMessage);
+        }
+      show("Connected\nTo Wifi");
       }
     }
   }
+
+void initDisplay()
+  {
+  if (settings.debug)
+    {
+    Serial.println("Initializing display");
+    }
+  if(!display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS)) 
+    {
+    Serial.println(F("SSD1306 allocation failed"));
+    delay(5000);
+    ESP.reset();  //try again
+    }
+  display.setRotation(settings.invertdisplay?2:0); //make it look right
+  display.clearDisplay();       //no initial logo
+  display.setTextSize(3);      // Normal 1:1 pixel scale
+  display.setTextColor(SSD1306_WHITE); // Draw white text
+  display.setCursor(0, 0);     // Start at top-left corner
+  display.cp437(true);         // Use full 256 char 'Code Page 437' font
+
+  if (settings.debug)
+    show("Init");
+  }
+
+
 
 
 void setup()
@@ -1053,6 +1264,8 @@ void setup()
   if (settingsAreValid)
     {      
     //initialize everything
+    initDisplay();
+
     Serial.println("Initializing LoRa module");
     initLoRa();
 
@@ -1086,6 +1299,10 @@ void loop()
     digitalWrite(LED_BUILTIN,LED_ON); //show a message came in
   else
     digitalWrite(LED_BUILTIN,LED_OFF); //show no message
+  
+  static ulong showListeningStatus=millis()+15000; //how long to show a message before going back to "listening..."
+  if (showListeningStatus<millis())
+    show(""); //don't wear out the display
 
   if (settingsAreValid)
     {      
@@ -1101,6 +1318,7 @@ void loop()
     if (lora.handleIncoming()) 
       {
       ledOffTime=millis()+1000; //turns on LED to indicate message has arrived
+      showListeningStatus=millis()+5000; //how long to leave stuff on the display
       report();
       }
     // else

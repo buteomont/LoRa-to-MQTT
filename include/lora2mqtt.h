@@ -38,6 +38,15 @@
 #define DEFAULT_LORA_PREAMBLE 12
 #define DEFAULT_LORA_BAUD_RATE 115200
 #define DEFAULT_LORA_POWER 22
+#define SCREEN_WIDTH 128      // OLED display width, in pixels
+#define SCREEN_HEIGHT 32      // OLED display height, in pixels
+#define OLED_RESET    -1      // Reset pin # (or -1 if sharing Arduino reset pin)
+#define SCREEN_ADDRESS 0x3C   //< See datasheet for Address; 0x3D for 128x64, 0x3C for 128x32
+#define DOT_RADIUS    2       // radius of activity dot
+#define DOT_SPACING   4       // spacing between dots
+
+#define RSSI_DOT_RADIUS 2       // Radius of the little dot at the bottom of the wifi indicator
+
 void showSettings();
 String getConfigCommand();
 bool processCommand(String cmd);
@@ -56,3 +65,15 @@ void setup();
 void loop();
 void incomingSerialData();
 char* generateMqttClientId(char* mqttId);
+
+//MQTT status for reference only
+// MQTT_CONNECTION_TIMEOUT     -4
+// MQTT_CONNECTION_LOST        -3
+// MQTT_CONNECT_FAILED         -2
+// MQTT_DISCONNECTED           -1
+// MQTT_CONNECTED               0
+// MQTT_CONNECT_BAD_PROTOCOL    1
+// MQTT_CONNECT_BAD_CLIENT_ID   2
+// MQTT_CONNECT_UNAVAILABLE     3
+// MQTT_CONNECT_BAD_CREDENTIALS 4
+// MQTT_CONNECT_UNAUTHORIZED    5

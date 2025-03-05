@@ -111,6 +111,12 @@ void RYLR998::begin(long baudRate)
       {
       _serial.read(); 
       }
+
+    while(!testComm())
+      {
+      Serial.print(".");
+      // keep trying until it works
+      }
     }
 
 void RYLR998::setJsonDocument(StaticJsonDocument<250> &doc)
@@ -135,6 +141,20 @@ bool RYLR998::handleIncoming()
 
             String address, length, jsonData, rssi, snr;
             _parseRcvString(result, address, length, jsonData, rssi, snr);
+
+            if (_debug)
+                {
+                Serial.print("Address: ");
+                Serial.println(address);
+                Serial.print("Length: ");
+                Serial.println(length);
+                Serial.print("Json Data:");
+                Serial.println(jsonData);
+                Serial.print("Rssi: ");
+                Serial.println(rssi);
+                Serial.print("SNR: ");
+                Serial.println(snr);
+                }
 
             if (_doc && jsonData)
                 {
@@ -165,6 +185,7 @@ bool RYLR998::send(uint16_t address, const String &data)
     String response = _sendCommand(command);
     if (response != "+OK")
         Serial.println("LORA:Response from RYLR998: "+response);
+        
     return response == "+OK";
     }
 
@@ -303,6 +324,7 @@ String RYLR998::_sendCommand(const String &command, unsigned long timeout)
     if (_debug)
         Serial.println("LORA:Sending lora command:"+command);
 
+    yield();
     _serial.println(command);
     unsigned long start = millis();
     String response = "";
@@ -316,6 +338,7 @@ String RYLR998::_sendCommand(const String &command, unsigned long timeout)
             Serial.println("LORA:"+response);
         break;
         }
+      yield();
       }
     return response;
     }
