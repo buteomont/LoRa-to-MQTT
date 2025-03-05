@@ -187,7 +187,10 @@ box boxStatus;
 
 boolean rssiShowing=false; //used to redraw the RSSI indicator after clearing display
 String lastMessage=""; //contains the last message sent to display. Sometimes need to reshow it
-
+char showbuffer[SHOWBUF_LENGTH][SHOWBUF_WIDTH]; //used to show stuff on the display without slowing down processing
+int showHeadPointer=0; //The first entry in the show buffer
+int showTailPointer=0; //The last entry in the show buffer
+ulong showListeningStatus=millis()+15000; //how long to show a message before going back to "listening..."
 
 void drawWifiStrength(int32_t rssi)
   {
@@ -602,6 +605,14 @@ void checkForCommand()
     }
   }
 
+void queue(String text)
+  {
+  showTailPointer++;
+  if (showTailPointer>=SHOWBUF_LENGTH)
+    showTailPointer=0;
+  snprintf(showbuffer[showTailPointer],SHOWBUF_WIDTH,"%s",text.c_str());
+  }
+
 //Acknowledge receipt of LoRa message and status of MQTT report
 bool ack(bool ok)
   {
@@ -653,8 +664,11 @@ bool report()
       }
     else if (value.is<double>()) 
       {
-      Serial.println(value.as<double>());
-      sprintf(reading,"%.2f",value.as<double>()); 
+      //sprintf on Arduino doesn't work with doubles. We have to jump through some hoops.
+      double number=value.as<double>();
+      int width=(number < 1 && number > -1) ? 2 : log10(abs(number)) + 4; // +4 for decimal point, 2 decimal places, and sign if negative
+      dtostrf(number,width,2,reading);
+      Serial.println(reading);
       } 
     else if (value.is<bool>()) 
       {
@@ -681,9 +695,8 @@ bool report()
       }
     else
       allGood++;
-
-    show(String(key)+":"+String(value));
-    delay(500); //give me time to read it
+    
+    queue(String(key)+":\n"+String(reading)); //Add this to the display buffer
     }
 
 
@@ -747,12 +760,10 @@ bool report()
     Serial.print("Ack ");
     Serial.println(ackStatus?"OK.":"failed.");
     if (!ok)
-      show("Pub Fail.");
+      queue("Pub Fail.");
     if (!ackStatus)
       {
-      delay(1000);
-      show("Ack Fail.");
-      delay(1000);
+      queue("Ack Fail.");
       }
     return ok;
     }
@@ -978,7 +989,7 @@ void setup_wifi()
       Serial.print("Connected to network with address ");
       Serial.println(WiFi.localIP());
       Serial.println();
-      show(WiFi.localIP().toString());
+      queue(WiFi.localIP().toString());
       }
     }
   } 
@@ -999,7 +1010,7 @@ void reconnect()
       // Loop until we're reconnected
       while (!mqttClient.connected()) 
         {
-        show("Connecting\nto MQTT");    
+        queue("Connecting\nto MQTT");    
         Serial.print("Attempting MQTT connection...");
 
         mqttClient.setBufferSize(JSON_STATUS_SIZE); //default (256) isn't big enough
@@ -1011,7 +1022,7 @@ void reconnect()
         if (mqttClient.connect(settings.mqttClientId,settings.mqttUsername,settings.mqttPassword))
           {
           Serial.println("connected to MQTT broker.");
-          show("Connected\nto MQTT");
+          queue("Connected\nto MQTT");
 
           //resubscribe to the incoming message topic
           char topic[MQTT_TOPIC_SIZE];
@@ -1174,7 +1185,7 @@ void connectToWiFi()
   {
   if (settingsAreValid && WiFi.status() != WL_CONNECTED)
     {
-    show("Connecting\nto WiFi");
+    queue("Connecting\nto WiFi");
     Serial.print("Attempting to connect to WPA SSID \"");
     Serial.print(settings.ssid);
     Serial.println("\"");
@@ -1224,13 +1235,15 @@ void connectToWiFi()
         rssiShowing=true;
         show(lastMessage);
         }
-      show("Connected\nTo Wifi");
+      queue("Connected\nTo Wifi");
       }
     }
   }
 
 void initDisplay()
   {
+  showListeningStatus=millis()+15000; //used to blank the display after a while
+  
   if (settings.debug)
     {
     Serial.println("Initializing display");
@@ -1252,7 +1265,23 @@ void initDisplay()
     show("Init");
   }
 
-
+//show the next message in the message queue
+void showMessages()
+  {
+  static unsigned long nextTime=millis();
+  if (millis() >= nextTime)
+    {
+    nextTime=millis()+1000; //one second per message
+    if (++showHeadPointer >= SHOWBUF_LENGTH)
+      showHeadPointer=0; //don't overflow it
+    if (showbuffer[showHeadPointer][0]!='\0') //must be something here
+      {
+      show(showbuffer[showHeadPointer]);
+      showbuffer[showHeadPointer][0]='\0'; //clear it out
+      showListeningStatus=millis()+5000;
+      }
+    }
+  }
 
 
 void setup()
@@ -1301,7 +1330,6 @@ void loop()
   else
     digitalWrite(LED_BUILTIN,LED_OFF); //show no message
   
-  static ulong showListeningStatus=millis()+15000; //how long to show a message before going back to "listening..."
   if (showListeningStatus<millis())
     show(""); //don't wear out the display
 
@@ -1330,6 +1358,7 @@ void loop()
     }
   yield();
   checkForCommand();
+  showMessages();
   }
 
 /*

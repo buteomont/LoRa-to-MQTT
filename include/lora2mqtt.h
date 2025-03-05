@@ -46,6 +46,9 @@
 #define DOT_SPACING   4       // spacing between dots
 
 #define RSSI_DOT_RADIUS 2       // Radius of the little dot at the bottom of the wifi indicator
+#define SHOWBUF_LENGTH 20     // Number of entries in the show buffer
+#define SHOWBUF_WIDTH 20     // Max size of entries in the show buffer
+
 
 void showSettings();
 String getConfigCommand();
