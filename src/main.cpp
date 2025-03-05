@@ -752,6 +752,7 @@ bool report()
       {
       delay(1000);
       show("Ack Fail.");
+      delay(1000);
       }
     return ok;
     }
