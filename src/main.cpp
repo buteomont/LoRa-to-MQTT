@@ -698,75 +698,21 @@ bool report()
     
     queue(String(key)+":\n"+String(reading)); //Add this to the display buffer
     }
-
-
-    // //publish the radio signal/noise ratio
-    // strcpy(topic,settings.mqttTopicRoot);
-    // strcat(topic,MQTT_TOPIC_SNR);
-    // sprintf(reading,"%d",(int)doc["snr"]); 
-    // success=publish(topic,reading,true); //retain
-    // if (!success)
-    //   Serial.println("************ Failed publishing rssi!");
-    // else
-    //   allGood++;
-     
-    // //publish the radio strength reading
-    // strcpy(topic,settings.mqttTopicRoot);
-    // strcat(topic,MQTT_TOPIC_RSSI);
-    // sprintf(reading,"%d",(int)doc["rssi"]); 
-    // success=publish(topic,reading,true); //retain
-    // if (!success)
-    //   Serial.println("************ Failed publishing rssi!");
-    // else
-    //   allGood++;
-   
-    // //publish the battery voltage
-    // strcpy(topic,settings.mqttTopicRoot);
-    // strcat(topic,MQTT_TOPIC_BATTERY);
-    // sprintf(reading,"%.2f",(float)doc["battery"]); 
-    // success=publish(topic,reading,true); //retain
-    // if (!success)
-    //   Serial.println("************ Failed publishing battery voltage!");
-    // else
-    //   allGood++;
-
-    // //publish the distance measurement
-    // strcpy(topic,settings.mqttTopicRoot);
-    // strcat(topic,MQTT_TOPIC_DISTANCE);
-    // sprintf(reading,"%d",(int)doc["distance"]); 
-    // success=publish(topic,reading,true); //retain
-    // if (!success)
-    //   Serial.println("************ Failed publishing distance measurement!");
-    // else
-    //   allGood++;
-    // show(reading);  //show this one on the display
-
-    // //publish the object detection state
-    // strcpy(topic,settings.mqttTopicRoot);
-    // strcat(topic,MQTT_TOPIC_STATE);
-    // sprintf(reading,"%s",doc["isPresent"]?"YES":"NO"); //item within range window
-    // success=publish(topic,reading,true); //retain
-    // if (!success)
-    //   Serial.println("************ Failed publishing sensor state!");
-    // else
-    //   allGood++;
-    // }
-
     
-    bool ok=allGood>=root.size();
-    bool ackStatus=ack(ok);
-    Serial.print("Publish ");
-    Serial.println(ok?"OK":"Failed");
-    Serial.print("Ack ");
-    Serial.println(ackStatus?"OK.":"failed.");
-    if (!ok)
-      queue("Pub Fail.");
-    if (!ackStatus)
-      {
-      queue("Ack Fail.");
-      }
-    return ok;
+  bool ok=allGood>=root.size();
+  bool ackStatus=ack(ok);
+  Serial.print("Publish ");
+  Serial.println(ok?"OK":"Failed");
+  Serial.print("Ack ");
+  Serial.println(ackStatus?"sent.":"failed.");
+  if (!ok)
+    queue("Pub Fail.");
+  if (!ackStatus)
+    {
+    queue("Ack Fail.");
     }
+  return ok;
+  }
 
 
 boolean publish(char* topic, const char* reading, boolean retain)
@@ -1243,7 +1189,7 @@ void connectToWiFi()
 void initDisplay()
   {
   showListeningStatus=millis()+15000; //used to blank the display after a while
-  
+
   if (settings.debug)
     {
     Serial.println("Initializing display");
